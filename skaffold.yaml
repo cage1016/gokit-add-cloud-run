@@ -1,0 +1,17 @@
+apiVersion: skaffold/v2beta5
+kind: Config
+build:
+  artifacts:
+    - image: gcr.io/retailbase-dev/add-cloud-run
+      buildpacks:
+        builder: "gcr.io/buildpacks/builder:v1"
+        dependencies:
+          paths:
+            - cmd/add/main.go
+            - internal
+        env:
+          - GOOGLE_BUILDABLE=cmd/add/main.go
+  tagPolicy:
+    sha256: {}
+  local:
+    push: true          

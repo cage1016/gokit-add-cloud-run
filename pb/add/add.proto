@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package pb;
+
+// The Add service definition.
+service Add {
+  rpc Sum(SumRequest) returns (SumResponse);
+  rpc Concat(ConcatRequest) returns (ConcatResponse);
+}
+
+message SumRequest {
+  int64 a = 1;
+  int64 b = 2;
+}
+
+message SumResponse {
+  int64 res = 1;
+  string err = 2;
+}
+
+message ConcatRequest {
+  string a = 1;
+  string b = 2;
+}
+
+message ConcatResponse {
+  string res = 1;
+  string err = 2;
+}
