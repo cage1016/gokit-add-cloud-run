@@ -1,10 +1,11 @@
 # go-kit add GRPC via Google Cloud Run
 
+
+
+
 This sample presents:
 - `cmd/add`: go-kit base GRPC application that provide two method `Sum` and `Concat`
 - `cmd/addcli`: a small go cli to send message to GRPC server
-## Deploy with Gloud Run button
-[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run)
 
 ## The Protocol Buffer Definition
 
@@ -97,34 +98,77 @@ user grpcurl
 grpcurl -plaintext -proto ./pb/add/add.proto -d '{"a": 1, "b":1}' localhost:8181 pb.Add.Sum
 ```
 
-## PreBuild
-
-Setup GCP project
-
-```sh
-gcloud config set project <project-name>
-GCP_PROJECT=$(gcloud config get-value project)
-GCP_PROJECT_NUMBER=$(gcloud projects list --filter="$GCP_PROJECT" --format="value(PROJECT_NUMBER)")
-```
-
-## Build Docker Image
-
-build docker image via build pack locally
-
-```sh
-DOCKER_IMAGE=gcr.io/${GCP_PROJECT}/gokit-add-cloud-run
-skaffold build
-docker push ${DOCKER_IMAGE}
-```
-
-or use gcloud builds and push docker image to `gcr.io`
-
-```sh
-DOCKER_IMAGE=gcr.io/${GCP_PROJECT}/gokit-add-cloud-run
-gcloud builds submit --pack builder=gcr.io/buildpacks/builder:v1,env=GOOGLE_BUILDABLE=cmd/add/main.go,image=${DOCKER_IMAGE}
-```
-
 ## Deploy
+
+### Google Cloud Run button
+
+1. Deploy by Cloud Run button
+
+    [![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run)
+
+2. Fetch cloud run endpoint
+
+    ```sh
+    gcloud config set project <project-name>
+    GCP_PROJECT=$(gcloud config get-value project)
+    GCP_PROJECT_NUMBER=$(gcloud projects list --filter="$GCP_PROJECT" --format="value(PROJECT_NUMBER)")
+    GCP_REGION=<your-cloud-run-region>
+
+    ENDPOINT=$(\
+      gcloud run services list \
+      --project=${GCP_PROJECT} \
+      --region=${GCP_REGION} \
+      --platform=managed \
+      --format="value(status.address.url)" \
+      --filter="metadata.name=gokit-add-cloud-run") 
+      ENDPOINT=${ENDPOINT#https://} && echo ${ENDPOINT}
+    ```
+
+3. We'll account for that in our `grpcurl` invocation by omitting the `-plaintext` flag:
+
+    ```sh
+    grpcurl -proto ./pb/add/add.proto -d '{"a":1, "b":1}' ${ENDPOINT}:443 pb.Add.Sum
+    grpcurl -proto ./pb/add/add.proto -d '{"a":"1", "b":"1"}' ${ENDPOINT}:443 pb.Add.Concat
+    ```
+
+    or use `cmd/addcli`
+
+    ```sh
+    go run cmd/addcli/main.go -server=${ENDPOINT}:443 -insecure=false -method=sum 1 1
+    go run cmd/addcli/main.go -server=${ENDPOINT}:443 -insecure=false -method=concat 1 1
+    ```
+
+4. Clearing
+    ```sh
+    gcloud run services delete gokit-add-cloud-run --region=${GCP_REGION} --platform=managed
+    ```
+
+### Deploy manual by gcloud command
+
+1. Setup GCP project
+
+    ```sh
+    gcloud config set project <project-name>
+    GCP_PROJECT=$(gcloud config get-value project)
+    GCP_PROJECT_NUMBER=$(gcloud projects list --filter="$GCP_PROJECT" --format="value(PROJECT_NUMBER)")
+    ```
+
+1. Build Docker Image
+
+    build docker image via build pack locally
+
+    ```sh
+    DOCKER_IMAGE=gcr.io/${GCP_PROJECT}/gokit-add-cloud-run
+    skaffold build
+    docker push ${DOCKER_IMAGE}
+    ```
+
+    or use gcloud builds and push docker image to `gcr.io`
+
+    ```sh
+    DOCKER_IMAGE=gcr.io/${GCP_PROJECT}/gokit-add-cloud-run
+    gcloud builds submit --pack builder=gcr.io/buildpacks/builder:v1,env=GOOGLE_BUILDABLE=cmd/add/main.go,image=${DOCKER_IMAGE}
+    ```
 
 1. Deploy cloud run via gcloud command
 
@@ -166,8 +210,7 @@ gcloud builds submit --pack builder=gcr.io/buildpacks/builder:v1,env=GOOGLE_BUIL
     go run cmd/addcli/main.go -server=${ENDPOINT}:443 -insecure=false -method=concat 1 1
     ```
 
-### Clearing
-
-```
-gcloud run services delete ${CLOUD_RUN_NAME} --region=${GCP_REGION} --platform=managed
-```    
+1. Clearing
+    ```
+    gcloud run services delete ${CLOUD_RUN_NAME} --region=${GCP_REGION} --platform=managed
+    ```
