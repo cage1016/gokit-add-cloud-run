@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/signal"
@@ -11,9 +13,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	kitgrpc "github.com/go-kit/kit/transport/grpc"
+	"github.com/opentracing/opentracing-go"
 	stdopentracing "github.com/opentracing/opentracing-go"
 	"github.com/openzipkin/zipkin-go"
 	zipkinhttp "github.com/openzipkin/zipkin-go/reporter/http"
+	"github.com/uber/jaeger-client-go"
+	jconfig "github.com/uber/jaeger-client-go/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
@@ -26,24 +31,28 @@ import (
 )
 
 const (
-	defZipkinV2URL string = ""
-	defServiceName string = "add"
-	defLogLevel    string = "error"
-	defServiceHost string = "localhost"
-	defGRPCPort    string = "8181"
-	envZipkinV2URL string = "QS_ZIPKIN_V2_URL"
-	envServiceName string = "QS_SERVICE_NAME"
-	envLogLevel    string = "QS_LOG_LEVEL"
-	envServiceHost string = "QS_SERVICE_HOST"
-	envGRPCPort    string = "PORT"
+	defJaegerURL   = ""
+	defZipkinV2URL = ""
+	defServiceName = "add"
+	defLogLevel    = "error"
+	defServiceHost = "localhost"
+	defGRPCPort    = "8181"
+
+	envJaegerURL   = "QS_JAEGER_URL"
+	envZipkinV2URL = "QS_ZIPKIN_V2_URL"
+	envServiceName = "QS_SERVICE_NAME"
+	envLogLevel    = "QS_LOG_LEVEL"
+	envServiceHost = "QS_SERVICE_HOST"
+	envGRPCPort    = "PORT"
 )
 
 type config struct {
-	serviceName string `json:""`
-	logLevel    string `json:""`
-	serviceHost string `json:""`
-	grpcPort    string `json:""`
-	zipkinV2URL string `json:""`
+	serviceName string
+	logLevel    string
+	serviceHost string
+	grpcPort    string
+	zipkinV2URL string
+	jaegerURL   string
 }
 
 // Env reads specified environment variable. If no value has been found,
@@ -70,7 +79,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	tracer := initOpentracing()
+	tracer, closer := initJaeger(cfg.serviceName, cfg.jaegerURL, logger)
+	defer closer.Close()
+
 	zipkinTracer := initZipkin(cfg.serviceName, cfg.grpcPort, cfg.zipkinV2URL, logger)
 	service := NewServer(logger)
 	endpoints := endpoints.New(service, logger, tracer, zipkinTracer)
@@ -98,6 +109,7 @@ func loadConfig(logger log.Logger) (cfg config) {
 	cfg.serviceHost = env(envServiceHost, defServiceHost)
 	cfg.grpcPort = env(envGRPCPort, defGRPCPort)
 	cfg.zipkinV2URL = env(envZipkinV2URL, defZipkinV2URL)
+	cfg.jaegerURL = env(envJaegerURL, defJaegerURL)
 	return cfg
 }
 
@@ -106,8 +118,29 @@ func NewServer(logger log.Logger) service.AddService {
 	return service
 }
 
-func initOpentracing() stdopentracing.Tracer {
-	return stdopentracing.GlobalTracer()
+func initJaeger(svcName, url string, logger log.Logger) (opentracing.Tracer, io.Closer) {
+	if url == "" {
+		return opentracing.NoopTracer{}, ioutil.NopCloser(nil)
+	}
+
+	tracer, closer, err := jconfig.Configuration{
+		ServiceName: svcName,
+		Sampler: &jconfig.SamplerConfig{
+			Type:  jaeger.SamplerTypeConst,
+			Param: 1,
+		},
+		Reporter: &jconfig.ReporterConfig{
+			LocalAgentHostPort: url,
+			LogSpans:           true,
+		},
+	}.NewTracer()
+	if err != nil {
+		level.Error(logger).Log("msg", fmt.Sprintf("Failed to init Jaeger: %s", err))
+		os.Exit(1)
+	}
+
+	opentracing.SetGlobalTracer(tracer)
+	return tracer, closer
 }
 
 func initZipkin(serviceName, httpPort, zipkinV2URL string, logger log.Logger) (zipkinTracer *zipkin.Tracer) {

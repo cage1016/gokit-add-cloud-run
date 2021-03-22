@@ -27,7 +27,9 @@ func New(svc service.AddService, logger log.Logger, otTracer stdopentracing.Trac
 		method := "sum"
 		sumEndpoint = MakeSumEndpoint(svc)
 		sumEndpoint = opentracing.TraceServer(otTracer, method)(sumEndpoint)
-		sumEndpoint = zipkin.TraceEndpoint(zipkinTracer, method)(sumEndpoint)
+		if zipkinTracer != nil {
+			sumEndpoint = zipkin.TraceEndpoint(zipkinTracer, method)(sumEndpoint)
+		}
 		sumEndpoint = LoggingMiddleware(log.With(logger, "method", method))(sumEndpoint)
 		ep.SumEndpoint = sumEndpoint
 	}
@@ -37,7 +39,9 @@ func New(svc service.AddService, logger log.Logger, otTracer stdopentracing.Trac
 		method := "concat"
 		concatEndpoint = MakeConcatEndpoint(svc)
 		concatEndpoint = opentracing.TraceServer(otTracer, method)(concatEndpoint)
-		concatEndpoint = zipkin.TraceEndpoint(zipkinTracer, method)(concatEndpoint)
+		if zipkinTracer != nil {
+			concatEndpoint = zipkin.TraceEndpoint(zipkinTracer, method)(concatEndpoint)
+		}
 		concatEndpoint = LoggingMiddleware(log.With(logger, "method", method))(concatEndpoint)
 		ep.ConcatEndpoint = concatEndpoint
 	}
