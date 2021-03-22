@@ -3,6 +3,8 @@
 This sample presents:
 - `cmd/add`: go-kit base GRPC application that provide two method `Sum` and `Concat`
 - `cmd/addcli`: a small go cli to send message to GRPC server
+## Deploy with Gloud Run button
+[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run)
 
 ## The Protocol Buffer Definition
 
